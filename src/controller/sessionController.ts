@@ -168,30 +168,9 @@ export async function showAllSessions(
       schema: 'THISISMYSECURETOKEN'
      }
    */
-  const { secretkey } = req.params;
-  const { authorization: token } = req.headers;
-
-  let tokenDecrypt: any = '';
-
-  if (secretkey === undefined) {
-    tokenDecrypt = token?.split(' ')[0];
-  } else {
-    tokenDecrypt = secretkey;
-  }
-
-  const arr: any = [];
-
-  if (tokenDecrypt !== req.serverOptions.secretKey) {
-    res.status(400).json({
-      response: false,
-      message: 'The token is incorrect',
-    });
-  }
-
-  Object.keys(clientsArray).forEach((item) => {
-    arr.push({ session: item });
-  });
-
+  // L'authentification est désormais assurée par le middleware verifyToken
+  // (verifyAccessMiddleware, x-api-key ou JWT) monté sur cette route dans
+  // routes/index.ts, plus besoin de revérifier un secretkey ici.
   res.status(200).json({ response: await getAllTokens(req) });
 }
 

@@ -13,80 +13,71 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import bcrypt from 'bcrypt';
 import { NextFunction, Request, Response } from 'express';
 
+import { config as configEnv } from '../config/env';
+import { verifyToken } from '../util/auth/jwt-helper';
+import { safeCompare } from '../util/security/safe-compare';
 import { clientsArray } from '../util/sessionUtil';
 
-function formatSession(session: string) {
-  return session.split(':')[0];
-}
-
-const verifyToken = (req: Request, res: Response, next: NextFunction): any => {
-  const secureToken = req.serverOptions.secretKey;
-
-  const { session } = req.params;
-  const { authorization: token } = req.headers;
-  if (!session)
-    return res.status(401).send({ message: 'Session not informed' });
-
+export const verifyAccessMiddleware = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
-    let tokenDecrypt = '';
-    let sessionDecrypt = '';
+    const secretKey = configEnv.secretKey;
 
-    try {
-      sessionDecrypt = session.split(':')[0];
-      tokenDecrypt = session
-        .split(':')[1]
-        .replace(/_/g, '/')
-        .replace(/-/g, '+');
-    } catch (error) {
-      try {
-        if (token && token !== '' && token.split(' ').length > 0) {
-          const token_value = token.split(' ')[1];
-          if (token_value)
-            tokenDecrypt = token_value.replace(/_/g, '/').replace(/-/g, '+');
-          else
-            return res.status(401).json({
-              message: 'Token is not present. Check your header and try again',
-            });
-        } else {
-          return res.status(401).json({
-            message: 'Token is not present. Check your header and try again',
-          });
-        }
-      } catch (e) {
-        req.logger.error(e);
-        return res.status(401).json({
-          error: 'Check that a Session and Token are correct',
-          message: error,
-        });
+    // 1. Backend-à-backend : clé de service partagée.
+    const serviceKey = req.headers['x-api-key'];
+
+    if (typeof serviceKey === 'string' && safeCompare(serviceKey, secretKey)) {
+      const sessionHeader = req.headers['x-session'];
+      let sessionFromHeader: string;
+
+      if (Array.isArray(sessionHeader)) {
+        sessionFromHeader = sessionHeader[0];
+      } else if (typeof sessionHeader === 'string') {
+        sessionFromHeader = sessionHeader;
+      } else {
+        return res.status(400).json({ message: 'Header x-session manquant' });
       }
+
+      req.session = sessionFromHeader;
+      req.token = serviceKey;
+      req.client = clientsArray[sessionFromHeader];
+      return next();
     }
 
-    bcrypt.compare(
-      sessionDecrypt + secureToken,
-      tokenDecrypt,
-      function (err, result) {
-        if (result) {
-          req.session = formatSession(req.params.session);
-          req.token = tokenDecrypt;
-          req.client = clientsArray[req.session];
-          next();
-        } else {
-          return res
-            .status(401)
-            .json({ error: 'Check that the Session and Token are correct' });
-        }
-      }
-    );
-  } catch (error) {
-    req.logger.error(error);
+    // 2. Frontend : JWT (cookie httpOnly ou Authorization: Bearer).
+    const token =
+      req.cookies?.['w-access-token'] ||
+      req.headers.authorization?.split(' ')[1];
+
+    if (!token) {
+      return res.status(401).json({
+        message: 'Token manquant',
+      });
+    }
+
+    const decoded = verifyToken<{ session: string }>(token, 'access');
+
+    req.session = decoded.session;
+    req.token = token;
+    req.client = clientsArray[req.session];
+
+    return next();
+  } catch (err: any) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        message: 'Token expiré',
+      });
+    }
+
     return res.status(401).json({
-      error: 'Check that the Session and Token are correct.',
-      message: error,
+      message: 'Token invalide',
     });
   }
 };
 
-export default verifyToken;
+export default verifyAccessMiddleware;

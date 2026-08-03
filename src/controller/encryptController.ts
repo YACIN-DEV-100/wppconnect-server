@@ -13,15 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import bcrypt from 'bcrypt';
 import { Request, Response } from 'express';
 
-const saltRounds = 10;
+import { config as configEnv } from '../config/env';
+import { setCookie } from '../util/auth/cookie/setCookie';
+import { signToken, verifyToken } from '../util/auth/jwt-helper';
+import { safeCompare } from '../util/security/safe-compare';
 
-export async function encryptSession(
-  req: Request,
-  res: Response
-): Promise<any> {
+export async function generateToken(req: Request, res: Response) {
   /**
    * #swagger.tags = ['Auth']
    * #swagger.parameters['secretkey'] = {
@@ -33,33 +32,73 @@ export async function encryptSession(
      #swagger.autoHeaders = false
    */
   const { session, secretkey } = req.params;
-  const { authorization: token } = req.headers;
-  const secureTokenEnv = req.serverOptions.secretKey;
+  const { authorization } = req.headers;
 
-  let tokenDecrypt = '';
+  let tokenInput = '';
 
-  if (secretkey === undefined) {
-    tokenDecrypt = (token as string).split(' ')[0];
+  if (secretkey) {
+    tokenInput = secretkey;
   } else {
-    tokenDecrypt = secretkey;
+    tokenInput = (authorization ?? '').split(' ')[1];
   }
 
-  if (tokenDecrypt !== secureTokenEnv) {
+  if (!session) {
+    return res.status(400).json({
+      message: 'Session requise',
+    });
+  }
+
+  if (
+    typeof tokenInput !== 'string' ||
+    !safeCompare(tokenInput, configEnv.secretKey)
+  ) {
     return res.status(400).json({
       response: false,
       message: 'The SECRET_KEY is incorrect',
     });
   }
 
-  bcrypt.hash(session + secureTokenEnv, saltRounds, function (err, hash) {
-    if (err) return res.status(500).json(err);
+  const payload = { session };
 
-    const hashFormat = hash.replace(/\//g, '_').replace(/\+/g, '-');
-    return res.status(201).json({
-      status: 'success',
-      session: session,
-      token: hashFormat,
-      full: `${session}:${hashFormat}`,
-    });
+  const token = signToken(payload, 'access');
+  const refreshToken = signToken(payload, 'refresh');
+
+  setCookie(res, 'w-access-token', token);
+  setCookie(res, 'w-refresh-token', refreshToken);
+
+  return res.status(201).json({
+    status: 'success',
+    session,
+    token,
+    full: session + token,
   });
+}
+
+export function refreshAccessToken(req: Request, res: Response) {
+  const refreshToken =
+    req.cookies?.['w-refresh-token'] || req.body.refreshToken;
+
+  if (!refreshToken) {
+    return res.status(401).json({
+      message: 'Refresh token required',
+    });
+  }
+
+  try {
+    const decoded = verifyToken<{ session: string }>(refreshToken, 'refresh');
+
+    const newAccessToken = signToken({ session: decoded.session }, 'access');
+    const newRefreshToken = signToken({ session: decoded.session }, 'refresh');
+
+    setCookie(res, 'w-access-token', newAccessToken);
+    setCookie(res, 'w-refresh-token', newRefreshToken);
+
+    return res.status(200).json({
+      accessToken: newAccessToken,
+    });
+  } catch (error) {
+    return res.status(401).json({
+      message: 'Invalid or expired refresh token',
+    });
+  }
 }

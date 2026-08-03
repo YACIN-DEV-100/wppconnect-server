@@ -15,6 +15,7 @@
  */
 
 import { defaultLogger } from '@wppconnect-team/wppconnect';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { Express, NextFunction, Router } from 'express';
 import boolParser from 'express-query-boolean';
@@ -61,6 +62,7 @@ export function initServer(serverOptions: Partial<ServerOptions>): {
   const PORT = process.env.PORT || serverOptions.port;
 
   app.use(cors());
+  app.use(cookieParser());
   app.use(verifyInternalKey);
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));

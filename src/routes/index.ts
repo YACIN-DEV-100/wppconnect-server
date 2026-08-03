@@ -22,7 +22,10 @@ import * as CatalogController from '../controller/catalogController';
 import * as CommunityController from '../controller/communityController';
 import ContactController from '../controller/contactController';
 import * as DeviceController from '../controller/deviceController';
-import { encryptSession } from '../controller/encryptController';
+import {
+  generateToken,
+  refreshAccessToken,
+} from '../controller/encryptController';
 import * as GroupController from '../controller/groupController';
 import * as LabelsController from '../controller/labelsController';
 import * as MessageController from '../controller/messageController';
@@ -41,14 +44,16 @@ const upload = multer(uploadConfig as any) as any;
 const routes: Router = Router();
 
 // Generate Token
-routes.post('/api/:session/:secretkey/generate-token', encryptSession);
+routes.post('/api/refresh-token', refreshAccessToken);
+routes.post('/api/:session/:secretkey?/generate-token', generateToken);
 
 // All Sessions
 routes.get(
-  '/api/:secretkey/show-all-sessions',
+  '/api/show-all-sessions',
+  verifyToken,
   SessionController.showAllSessions
 );
-routes.post('/api/:secretkey/start-all', SessionController.startAllSessions);
+routes.post('/api/:secretkey?/start-all', SessionController.startAllSessions);
 
 // Sessions
 routes.get(
@@ -83,7 +88,7 @@ routes.post(
   SessionController.logOutSession
 );
 routes.post(
-  '/api/:session/:secretkey/clear-session-data',
+  '/api/:session/:secretkey?/clear-session-data',
   MiscController.clearSessionData
 );
 routes.post(
