@@ -1025,16 +1025,19 @@ export async function sendImageAsStickerGif(req: Request, res: Response) {
           schema: {
             type: 'object',
             properties: {
-              phone: { type: 'string' },
+              phones: {
+                type: 'array',
+                items: { type: 'string' }
+              },
               isGroup: { type: 'boolean' },
               path: { type: 'string' },
             },
-            required: ['phone', 'path'],
+            required: ['phones', 'path'],
           },
           examples: {
             'Default': {
               value: {
-                phone: '5521999999999',
+                phones: ['5521999999999'],
                 isGroup: true,
                 path: '<path_file>',
               },
@@ -1044,7 +1047,7 @@ export async function sendImageAsStickerGif(req: Request, res: Response) {
       },
     }
    */
-  const { phone, path } = req.body;
+  const { phones, path } = req.body;
 
   if (!path && !req.file)
     res.status(401).send({
@@ -1055,8 +1058,8 @@ export async function sendImageAsStickerGif(req: Request, res: Response) {
 
   try {
     const results: any = [];
-    for (const contato of phone) {
-      results.push(await req.client.sendImageAsStickerGif(contato, pathFile));
+    for (const contact of phones) {
+      results.push(await req.client.sendImageAsStickerGif(contact, pathFile));
     }
 
     if (results.length === 0) res.status(400).json('Error sending message');
