@@ -48,7 +48,10 @@ export async function sendMessage(req: Request, res: Response) {
           schema: {
             type: "object",
             properties: {
-              phone: { type: "string" },
+              phones: {
+                type: "array",
+                items: { type: "string" }
+              },
               isGroup: { type: "boolean" },
               isNewsletter: { type: "boolean" },
               isLid: { type: "boolean" },
@@ -58,8 +61,8 @@ export async function sendMessage(req: Request, res: Response) {
           },
           examples: {
             "Send message to contact": {
-              value: { 
-                phone: '5521999999999',
+              value: {
+                phones: ['5521999999999'],
                 isGroup: false,
                 isNewsletter: false,
                 isLid: false,
@@ -67,8 +70,8 @@ export async function sendMessage(req: Request, res: Response) {
               }
             },
             "Send message with reply": {
-              value: { 
-                phone: '5521999999999',
+              value: {
+                phones: ['5521999999999'],
                 isGroup: false,
                 isNewsletter: false,
                 isLid: false,
@@ -80,7 +83,7 @@ export async function sendMessage(req: Request, res: Response) {
             },
             "Send message to group": {
               value: {
-                phone: '8865623215244578',
+                phones: ['8865623215244578'],
                 isGroup: true,
                 message: 'Hi from WPPConnect',
               }
@@ -90,14 +93,41 @@ export async function sendMessage(req: Request, res: Response) {
       }
      }
    */
-  const { phone, message } = req.body;
+  const { phones, message, options = {} } = req.body;
 
-  const options = req.body.options || {};
+  if (!Array.isArray(phones) || phones.length === 0) {
+    return res.status(400).json({
+      error: 'Les téléphones doivent former un tableau non vide',
+    });
+  }
+
+  if (!message || typeof message !== 'string') {
+    return res.status(400).json({
+      error:
+        'Le message est obligatoire et doit être une chaîne de caractères.',
+    });
+  }
 
   try {
-    const results: any = [];
-    for (const contato of phone) {
-      results.push(await req.client.sendText(contato, message, options));
+    const results: any[] = [];
+
+    for (const contact of phones) {
+      // Simulation de frappe humaine avant l'envoi (anti-détection spam),
+      // délai aléatoire 5-15s entre le "typing" et l'envoi effectif.
+      await req.client.startTyping(contact);
+
+      const waitTime = Math.floor(Math.random() * (15000 - 5000 + 1)) + 5000;
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
+
+      const result = await req.client.sendText(contact, message, options);
+      await req.client.stopTyping(contact);
+      results.push(result);
+
+      // Petite pause supplémentaire entre destinataires pour éviter les
+      // rafales d'envoi quand il y en a plusieurs.
+      if (phones.length > 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
     }
 
     if (results.length === 0) res.status(400).json('Error sending message');

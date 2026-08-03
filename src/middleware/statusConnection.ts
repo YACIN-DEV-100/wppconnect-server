@@ -28,8 +28,11 @@ export default async function statusConnection(
     if (req.client && req.client.isConnected) {
       await req.client.isConnected();
 
+      // Accepte les deux noms de champ : `phones` (nouveau, tableau explicite,
+      // utilisé par sendMessage/sendImageAsStickerGif) et `phone` (ancien nom,
+      // toujours utilisé par les autres endpoints d'envoi non migrés).
       const localArr = contactToArray(
-        req.body.phone || [],
+        req.body.phones || req.body.phone || [],
         req.body.isGroup,
         req.body.isNewsletter,
         req.body.isLid
@@ -59,7 +62,11 @@ export default async function statusConnection(
         }
         index++;
       }
+      // Écrit le résultat normalisé sous les deux clés, pour que les
+      // contrôleurs migrés (phones) et non migrés (phone) le lisent tous les
+      // deux correctement.
       req.body.phone = localArr;
+      req.body.phones = localArr;
     } else {
       res.status(404).json({
         response: null,
