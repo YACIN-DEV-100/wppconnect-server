@@ -23,6 +23,7 @@ import { Logger } from 'winston';
 import { version } from '../../package.json';
 import config from '../config';
 import { config as configEnv } from '../config/env';
+import { clearAuthCookies } from '../util/auth/cookie/setCookie';
 import CreateSessionUtil from '../util/createSessionUtil';
 import { callWebHook, contactToArray } from '../util/functions';
 import getAllTokens from '../util/getAllTokens';
@@ -220,8 +221,20 @@ export async function startSession(req: Request, res: Response): Promise<any> {
   const session = req.session;
   const { waitQrCode = false } = req.body;
 
-  await getSessionState(req, res);
+  // Si la session est déjà connectée, on répond immédiatement sans relancer
+  // opendata (qui redémarrerait inutilement la session WhatsApp active).
+  const client = req.client;
+  if (client && client.status === 'CONNECTED') {
+    return res
+      .status(200)
+      .json({ status: 'CONNECTED', message: 'Already connected' });
+  }
+
   await SessionUtil.opendata(req, session, waitQrCode ? res : null);
+
+  if (!waitQrCode) {
+    return res.status(200).json({ status: 'STARTING', message: 'Starting...' });
+  }
 }
 
 export async function closeSession(req: Request, res: Response): Promise<any> {
@@ -277,45 +290,53 @@ export async function logOutSession(req: Request, res: Response): Promise<any> {
       schema: 'NERDWHATS_AMERICA'
      }
    */
+  const session = req.session;
+
   try {
-    const session = req.session;
-    await req.client.logout();
-    deleteSessionOnArray(req.session);
+    // 1. Supprimer les cookies JWT.
+    clearAuthCookies(res);
 
-    setTimeout(async () => {
-      const pathUserData = config.customUserDataDir + req.session;
-      const pathTokens = __dirname + `../../../tokens/${req.session}.data.json`;
-
-      if (fs.existsSync(pathUserData)) {
-        await fs.promises.rm(pathUserData, {
-          recursive: true,
-          maxRetries: 5,
-          force: true,
-          retryDelay: 1000,
-        });
-      }
-      if (fs.existsSync(pathTokens)) {
-        await fs.promises.rm(pathTokens, {
-          recursive: true,
-          maxRetries: 5,
-          force: true,
-          retryDelay: 1000,
-        });
-      }
-
-      req.io.emit('whatsapp-status', false);
-      callWebHook(req.client, req, 'logoutsession', {
-        message: `Session: ${session} logged out`,
-        connected: false,
+    // 2. Logout WhatsApp (une erreur ici, ex. navigateur déjà fermé,
+    // ne doit pas empêcher le nettoyage qui suit).
+    if (req.client) {
+      await req.client.logout().catch((err) => {
+        req.logger.warn('Browser already closed during logout.', err);
       });
+    }
 
-      return await res
-        .status(200)
-        .json({ status: true, message: 'Session successfully closed' });
-    }, 500);
-    /*try {
-      await req.client.close();
-    } catch (error) {}*/
+    // 3. Supprimer de la mémoire vive.
+    deleteSessionOnArray(session);
+
+    // 4. Laisser le temps aux verrous de fichiers de se libérer, avant de
+    // nettoyer les dossiers/fichiers de la session (au lieu du setTimeout
+    // imbriqué précédent).
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const pathUserData = config.customUserDataDir + session;
+    const pathTokens = __dirname + `../../../tokens/${session}.data.json`;
+
+    const cleanupPath = async (path: string) => {
+      if (fs.existsSync(path)) {
+        await fs.promises.rm(path, {
+          recursive: true,
+          force: true,
+          maxRetries: 5,
+          retryDelay: 1000,
+        });
+      }
+    };
+
+    await Promise.all([cleanupPath(pathUserData), cleanupPath(pathTokens)]);
+
+    req.io.emit('whatsapp-status', false);
+    callWebHook(req.client, req, 'logoutsession', {
+      message: `Session: ${session} logged out`,
+      connected: false,
+    });
+
+    return res
+      .status(200)
+      .json({ status: true, message: 'Session successfully closed' });
   } catch (error) {
     req.logger.error(error);
     res
