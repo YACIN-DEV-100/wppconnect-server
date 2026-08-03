@@ -22,9 +22,11 @@ import { Logger } from 'winston';
 
 import { version } from '../../package.json';
 import config from '../config';
+import { config as configEnv } from '../config/env';
 import CreateSessionUtil from '../util/createSessionUtil';
 import { callWebHook, contactToArray } from '../util/functions';
 import getAllTokens from '../util/getAllTokens';
+import { safeCompare } from '../util/security/safe-compare';
 import { clientsArray, deleteSessionOnArray } from '../util/sessionUtil';
 
 const SessionUtil = new CreateSessionUtil();
@@ -129,7 +131,10 @@ export async function startAllSessions(
 
   const allSessions = await getAllTokens(req);
 
-  if (tokenDecrypt !== req.serverOptions.secretKey) {
+  if (
+    typeof tokenDecrypt !== 'string' ||
+    !safeCompare(tokenDecrypt, configEnv.secretKey)
+  ) {
     res.status(400).json({
       response: 'error',
       message: 'The token is incorrect',

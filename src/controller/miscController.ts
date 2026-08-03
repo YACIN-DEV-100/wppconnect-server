@@ -19,7 +19,9 @@ import fs from 'fs';
 
 import { logger } from '..';
 import config from '../config';
+import { config as configEnv } from '../config/env';
 import { backupSessions, restoreSessions } from '../util/manageSession';
+import { safeCompare } from '../util/security/safe-compare';
 import { clientsArray } from '../util/sessionUtil';
 
 export async function backupAllSessions(req: Request, res: Response) {
@@ -44,7 +46,10 @@ export async function backupAllSessions(req: Request, res: Response) {
      */
   const { secretkey } = req.params;
 
-  if (secretkey !== config.secretKey) {
+  if (
+    typeof secretkey !== 'string' ||
+    !safeCompare(secretkey, configEnv.secretKey)
+  ) {
     res.status(400).json({
       response: 'error',
       message: 'The token is incorrect',
@@ -91,7 +96,10 @@ export async function restoreAllSessions(req: Request, res: Response) {
   */
   const { secretkey } = req.params;
 
-  if (secretkey !== config.secretKey) {
+  if (
+    typeof secretkey !== 'string' ||
+    !safeCompare(secretkey, configEnv.secretKey)
+  ) {
     res.status(400).json({
       response: 'error',
       message: 'The token is incorrect',
@@ -150,7 +158,10 @@ export async function clearSessionData(req: Request, res: Response) {
   try {
     const { secretkey, session } = req.params;
 
-    if (secretkey !== config.secretKey) {
+    if (
+      typeof secretkey !== 'string' ||
+      !safeCompare(secretkey, configEnv.secretKey)
+    ) {
       res.status(400).json({
         response: 'error',
         message: 'The token is incorrect',
