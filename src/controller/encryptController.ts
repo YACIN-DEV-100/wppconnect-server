@@ -15,10 +15,10 @@
  */
 import { Request, Response } from 'express';
 
-// import { config as configEnv } from '../config/env';
+import { config as configEnv } from '../config/env';
 import { setCookie } from '../util/auth/cookie/setCookie';
 import { signToken, verifyToken } from '../util/auth/jwt-helper';
-// import { safeCompare } from '../util/security/safe-compare';
+import { safeCompare } from '../util/security/safe-compare';
 
 export async function generateToken(req: Request, res: Response) {
   /**
@@ -41,23 +41,21 @@ export async function generateToken(req: Request, res: Response) {
     tokenInput = (authorization ?? '').split(' ')[1];
   }
 
-  console.log(tokenInput);
-  // if (!session) {
-  //   return res.status(400).json({
-  //     message: 'Session requise',
-  //   });
-  // }
+  if (!session) {
+    return res.status(400).json({
+      message: 'Session requise',
+    });
+  }
 
-  // if (
-  //   typeof tokenInput !== 'string' ||
-  //   !safeCompare(tokenInput, configEnv.secretKey)
-  // ) {
-
-  //   return res.status(400).json({
-  //     response: false,
-  //     message: 'The SECRET_KEY is incorrect',
-  //   });
-  // }
+  if (
+    typeof tokenInput !== 'string' ||
+    !safeCompare(tokenInput, configEnv.secretKey)
+  ) {
+    return res.status(400).json({
+      response: false,
+      message: 'The SECRET_KEY is incorrect',
+    });
+  }
   const payload = { session };
 
   const token = signToken(payload, 'access');
