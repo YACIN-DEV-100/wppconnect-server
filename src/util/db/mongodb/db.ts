@@ -1,30 +1,23 @@
-//import mongoose from 'mongoose';
-import config from '../../../config';
+import mongoose from 'mongoose';
 
-const mongoose =
-  config.tokenStoreType === 'mongodb' ? require('mongoose') : null;
+import config from '../../../config';
 
 if (config.tokenStoreType === 'mongodb') {
   mongoose.Promise = global.Promise;
+
   const userAndPassword =
     config.db.mongodbUser && config.db.mongodbPassword
       ? `${config.db.mongodbUser}:${config.db.mongodbPassword}@`
       : '';
 
-  if (!config.db.mongoIsRemote) {
-    mongoose.connect(
-      `mongodb://${userAndPassword}${config.db.mongodbHost}:${config.db.mongodbPort}/${config.db.mongodbDatabase}`,
-      {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-      }
-    );
-  } else {
-    mongoose.connect(config.db.mongoURLRemote, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-  }
+  const uri = config.db.mongoIsRemote
+    ? config.db.mongoURLRemote
+    : `mongodb://${userAndPassword}${config.db.mongodbHost}:${config.db.mongodbPort}/${config.db.mongodbDatabase}`;
+
+  mongoose
+    .connect(uri)
+    .then(() => console.log('✅ MongoDB connected'))
+    .catch((err) => console.error('❌ MongoDB connection error:', err));
 }
 
 export default mongoose;
