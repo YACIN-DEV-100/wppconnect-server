@@ -124,13 +124,25 @@ export async function callWebHook(
   const webhook =
     client?.config.webhook || req.serverOptions.webhook.url || false;
   if (webhook) {
+    // On ignore si c'est le bot lui-même qui parle (fromMe), ou si
+    // l'événement/from/type est dans la liste "ignore" de la config.
     if (
-      req.serverOptions.webhook?.ignore &&
-      (req.serverOptions.webhook.ignore.includes(event) ||
-        req.serverOptions.webhook.ignore.includes(data?.from) ||
-        req.serverOptions.webhook.ignore.includes(data?.type))
-    )
+      data?.fromMe === true ||
+      (req.serverOptions.webhook?.ignore &&
+        (req.serverOptions.webhook.ignore.includes(event) ||
+          req.serverOptions.webhook.ignore.includes(data?.from) ||
+          req.serverOptions.webhook.ignore.includes(data?.type)))
+    ) {
       return;
+    }
+
+    // Pour les messages entrants, on ne relaie que les types que le
+    // récepteur sait traiter.
+    const allowedTypes = ['chat', 'image', 'list_response'];
+    if (event === 'onmessage' && !allowedTypes.includes(data?.type)) {
+      return;
+    }
+
     if (req.serverOptions.webhook.autoDownload)
       await autoDownload(client, req, data);
     try {
