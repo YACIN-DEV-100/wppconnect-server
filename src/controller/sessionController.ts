@@ -135,7 +135,7 @@ export async function startAllSessions(
     typeof tokenDecrypt !== 'string' ||
     !safeCompare(tokenDecrypt, configEnv.secretKey)
   ) {
-    res.status(400).json({
+    return res.status(400).json({
       response: 'error',
       message: 'The token is incorrect',
     });

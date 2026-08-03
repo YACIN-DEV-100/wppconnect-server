@@ -50,7 +50,7 @@ export async function backupAllSessions(req: Request, res: Response) {
     typeof secretkey !== 'string' ||
     !safeCompare(secretkey, configEnv.secretKey)
   ) {
-    res.status(400).json({
+    return res.status(400).json({
       response: 'error',
       message: 'The token is incorrect',
     });
@@ -100,7 +100,7 @@ export async function restoreAllSessions(req: Request, res: Response) {
     typeof secretkey !== 'string' ||
     !safeCompare(secretkey, configEnv.secretKey)
   ) {
-    res.status(400).json({
+    return res.status(400).json({
       response: 'error',
       message: 'The token is incorrect',
     });
@@ -162,7 +162,7 @@ export async function clearSessionData(req: Request, res: Response) {
       typeof secretkey !== 'string' ||
       !safeCompare(secretkey, configEnv.secretKey)
     ) {
-      res.status(400).json({
+      return res.status(401).json({
         response: 'error',
         message: 'The token is incorrect',
       });
