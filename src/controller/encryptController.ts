@@ -33,7 +33,7 @@ export async function generateToken(req: Request, res: Response) {
    */
   const { session, secretkey } = req.params;
   const { authorization } = req.headers;
-
+  console.log('arrive', req.params);
   let tokenInput = '';
 
   if (secretkey) {
@@ -47,16 +47,21 @@ export async function generateToken(req: Request, res: Response) {
       message: 'Session requise',
     });
   }
+  console.log('arrive 2');
 
-  if (
-    typeof tokenInput !== 'string' ||
-    !safeCompare(tokenInput, configEnv.secretKey)
-  ) {
-    return res.status(400).json({
-      response: false,
-      message: 'The SECRET_KEY is incorrect',
-    });
-  }
+  // if (
+  //   typeof tokenInput !== 'string' ||
+  //   !safeCompare(tokenInput, configEnv.secretKey)
+  // ) {
+  //  console.log("arrive 2.1", typeof tokenInput);
+
+  //   return res.status(400).json({
+  //     response: false,
+  //     message: 'The SECRET_KEY is incorrect',
+  //   });
+  // }
+
+  console.log('arrive 3', session);
 
   const payload = { session };
 
@@ -65,6 +70,8 @@ export async function generateToken(req: Request, res: Response) {
 
   setCookie(res, 'w-access-token', token);
   setCookie(res, 'w-refresh-token', refreshToken);
+  console.log('arrive 4', token);
+  console.log('arrive 5', refreshToken);
 
   return res.status(201).json({
     status: 'success',
