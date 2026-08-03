@@ -29,6 +29,7 @@ import path from 'path';
 import { promisify } from 'util';
 
 import config from '../config';
+import { config as envConfig } from '../config/env';
 import { convert } from '../mapper/index';
 import { ServerOptions } from '../types/ServerOptions';
 import { bucketAlreadyExists } from './bucketAlreadyExists';
@@ -140,8 +141,28 @@ export async function callWebHook(
       data = Object.assign({ event: event, session: client.session }, data);
       if (req.serverOptions.mapper.enable)
         data = await convert(req.serverOptions.mapper.prefix, data);
+
+      // Signature HMAC du payload : permet au receveur de vérifier que
+      // l'événement vient bien de ce service, indépendamment de x-internal-key
+      // (secret générique partagé par tout le trafic interne, pas spécifique à ce flux).
+      // On sérialise une seule fois et on envoie cette chaîne telle quelle (au lieu de
+      // laisser axios re-sérialiser `data` lui-même) : la signature doit porter exactement
+      // sur les octets transmis, pas sur une re-sérialisation indépendante qui pourrait
+      // différer (ordre des clés, toJSON() dépendant du temps, etc.).
+      const body = JSON.stringify(data);
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const signature = Crypto.createHmac('sha256', envConfig.wppWebhookSecret)
+        .update(`${timestamp}.${body}`)
+        .digest('hex');
+
       api
-        .post(webhook, data)
+        .post(webhook, body, {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-webhook-timestamp': timestamp,
+            'x-webhook-signature': signature,
+          },
+        })
         .then(() => {
           try {
             const events = ['unreadmessages', 'onmessage'];
