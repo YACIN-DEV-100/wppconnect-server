@@ -272,8 +272,16 @@ export async function autoDownload(client: any, req: any, message: any) {
 
 export async function startAllSessions(config: any, logger: any) {
   try {
+    // secretKey vient de la config env (WPP_SECRET_KEY), pas du paramètre
+    // config.secretKey (valeur par défaut de src/config.ts) : sessionController.ts
+    // vérifie désormais cette même config env, un appel construit avec l'ancienne
+    // valeur par défaut échouerait dès que WPP_SECRET_KEY diffère du défaut.
+    // x-internal-key est requis par le middleware global (index.ts), y compris
+    // pour cet appel HTTP que le serveur se fait à lui-même au démarrage.
     await api.post(
-      `${config.host}:${config.port}/api/${config.secretKey}/start-all`
+      `${config.host}:${config.port}/api/${envConfig.secretKey}/start-all`,
+      undefined,
+      { headers: { 'x-internal-key': envConfig.internalKey } }
     );
   } catch (e) {
     logger.error(e);
