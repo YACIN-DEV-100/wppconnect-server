@@ -230,6 +230,20 @@ export async function startSession(req: Request, res: Response): Promise<any> {
       .json({ status: 'CONNECTED', message: 'Already connected' });
   }
 
+  // Si un client existe déjà pour cette session et n'est ni CONNECTED ni
+  // CLOSED (INITIALIZING, QRCODE, PHONECODE...), createSessionUtil.getClient
+  // fera un retour anticipé silencieux (voir son propre garde-fou :
+  // `if (client.status != null && client.status !== 'CLOSED') return;`) sans
+  // jamais écrire sur CE `res` — seul le `res` capturé en closure par le tout
+  // premier appel (catchQR/start) recevra une réponse. Sans ce filet, une
+  // deuxième requête sur une session déjà en cours d'initialisation reste en
+  // attente indéfiniment. On répond ici avec l'état courant + le QR
+  // existant, sans jamais appeler opendata (donc pas de double écriture sur
+  // `res`).
+  if (client && client.status != null && client.status !== 'CLOSED') {
+    return getSessionState(req, res);
+  }
+
   await SessionUtil.opendata(req, session, waitQrCode ? res : null);
 
   if (!waitQrCode) {
