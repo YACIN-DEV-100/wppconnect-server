@@ -32,6 +32,34 @@ import { clientsArray, deleteSessionOnArray } from '../util/sessionUtil';
 
 const SessionUtil = new CreateSessionUtil();
 
+// Nombre de sessions WhatsApp (donc de process Chromium) démarrées en
+// parallèle lors d'un démarrage groupé. Sans cette limite, startAllSessions
+// lançait TOUTES les sessions stockées simultanément (un Chromium headless
+// complet chacune, ~150-300 Mo+ de RAM) — avec beaucoup de sessions, ça
+// fait un pic mémoire/CPU au démarrage proportionnel au nombre de sessions,
+// avec un vrai risque d'OOM. 3 reste un compromis : les sessions démarrent
+// toujours automatiquement, juste étalées dans le temps plutôt que d'un
+// coup.
+const SESSION_START_CONCURRENCY = 3;
+
+async function startSessionsThrottled(
+  sessions: string[],
+  req: Request
+): Promise<void> {
+  const queue = [...sessions];
+
+  async function worker() {
+    let session: string | undefined;
+    while ((session = queue.shift()) !== undefined) {
+      const util = new CreateSessionUtil();
+      await util.opendata(req, session);
+    }
+  }
+
+  const workerCount = Math.min(SESSION_START_CONCURRENCY, sessions.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+}
+
 async function downloadFileFunction(
   message: Message,
   client: Whatsapp,
@@ -142,10 +170,11 @@ export async function startAllSessions(
     });
   }
 
-  allSessions.map(async (session: string) => {
-    const util = new CreateSessionUtil();
-    await util.opendata(req, session);
-  });
+  // Pas d'await ici : la réponse HTTP part avant que toutes les sessions
+  // aient fini de démarrer (comportement inchangé), mais le démarrage
+  // effectif des sessions est désormais throttlé (voir
+  // startSessionsThrottled) au lieu de toutes les lancer en parallèle.
+  startSessionsThrottled(allSessions, req).catch((e) => req.logger?.error(e));
 
   return await res
     .status(201)

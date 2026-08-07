@@ -15,6 +15,7 @@
  */
 
 import { defaultLogger } from '@wppconnect-team/wppconnect';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { Express, NextFunction, Router } from 'express';
@@ -61,12 +62,15 @@ export function initServer(serverOptions: Partial<ServerOptions>): {
   const app = express();
   const PORT = process.env.PORT || serverOptions.port;
 
+  app.use(compression());
   app.use(cors());
   app.use(cookieParser());
   app.use(verifyInternalKey);
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ limit: '50mb', extended: true }));
-  app.use('/files', express.static('WhatsAppImages'));
+  // 15mb : au-delà, un média WhatsApp base64 volumineux passe de toute façon
+  // par le disque (voir upload.ts / WhatsAppImages), pas par le body JSON.
+  app.use(express.json({ limit: '15mb' }));
+  app.use(express.urlencoded({ limit: '15mb', extended: true }));
+  app.use('/files', express.static('WhatsAppImages', { maxAge: '1d' }));
   app.use(boolParser());
 
   if (config?.aws_s3?.access_key_id && config?.aws_s3?.secret_key) {
@@ -80,12 +84,19 @@ export function initServer(serverOptions: Partial<ServerOptions>): {
     req.logger = logger;
     req.io = io as any;
 
-    const oldSend = res.send;
+    // Injecte `session`/applique le mapper directement sur l'objet, avant
+    // sérialisation — remplace l'ancienne version qui interceptait
+    // res.send() APRÈS que res.json() ait déjà stringifié la réponse
+    // (JSON.parse ici + re-stringify implicite par res.send sur un objet =
+    // un aller-retour parse/stringify inutile sur CHAQUE réponse JSON, y
+    // compris les grosses listes). Couvre tous les routes handlers du
+    // projet : ils passent tous par res.status(n).json(...), un seul appel
+    // res.send() existe dans tout le repo (backupSessions, un flux de
+    // fichier zip, pas du JSON — non concerné par ce hook).
+    const oldJson = res.json;
 
-    res.send = async function (data: any) {
-      const content = req.headers['content-type'];
-      if (content == 'application/json') {
-        data = JSON.parse(data);
+    res.json = async function (data: any) {
+      if (data && typeof data === 'object') {
         if (!data.session) data.session = req.client ? req.client.session : '';
         if (data.mapper && req.serverOptions.mapper.enable) {
           data.response = await convert(
@@ -96,8 +107,8 @@ export function initServer(serverOptions: Partial<ServerOptions>): {
           delete data.mapper;
         }
       }
-      res.send = oldSend;
-      return res.send(data);
+      res.json = oldJson;
+      return res.json(data);
     };
     next();
   });
@@ -106,6 +117,13 @@ export function initServer(serverOptions: Partial<ServerOptions>): {
 
   createFolders();
   const http = createServer(app);
+  // Aucun timeout n'était configuré sur ce serveur : une connexion lente ou
+  // inerte (client qui ne ferme jamais) pouvait rester ouverte
+  // indéfiniment. headersTimeout doit rester strictement supérieur à
+  // keepAliveTimeout (recommandation Node.js), sans quoi des requêtes
+  // keep-alive légitimes peuvent être coupées prématurément.
+  http.keepAliveTimeout = 65_000;
+  http.headersTimeout = 66_000;
   const io = new Socket(http, {
     cors: {
       origin: '*',

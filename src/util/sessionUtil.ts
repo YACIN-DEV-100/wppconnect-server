@@ -19,11 +19,6 @@ import { EventEmitter } from 'events';
 export const chromiumArgs = [
   '--disable-web-security', // Disables web security
   '--no-sandbox', // Disables sandbox
-  '--aggressive-cache-discard', // Aggressively discards cache
-  '--disable-cache', // Disables cache
-  '--disable-application-cache', // Disables application cache
-  '--disable-offline-load-stale-cache', // Disables loading stale offline cache
-  '--disk-cache-size=0', // Sets disk cache size to 0
   '--disable-background-networking', // Disables background networking activities
   '--disable-default-apps', // Disables default apps
   '--disable-extensions', // Disables extensions

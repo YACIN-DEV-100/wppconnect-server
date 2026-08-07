@@ -27,5 +27,14 @@ const storage = multer.diskStorage({
   },
 });
 
-const uploads = multer({ storage: storage });
+// Aucune limite de taille n'était configurée (illimité par défaut chez
+// multer) — un upload multipart pouvait saturer le disque/la mémoire sans
+// aucun plafond, contrairement au corps JSON qui a au moins une limite
+// explicite (15mb, voir index.ts). 25mb reste cohérent avec des médias
+// WhatsApp (images/documents), au-delà desquels un upload est
+// vraisemblablement anormal.
+const uploads = multer({
+  storage: storage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
 export default uploads;
