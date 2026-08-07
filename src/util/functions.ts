@@ -19,7 +19,7 @@ import {
   PutPublicAccessBlockCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import api from 'axios';
+import axios from 'axios';
 import Crypto from 'crypto';
 import { Request } from 'express';
 import fs from 'fs';
@@ -33,6 +33,13 @@ import { config as envConfig } from '../config/env';
 import { convert } from '../mapper/index';
 import { ServerOptions } from '../types/ServerOptions';
 import { bucketAlreadyExists } from './bucketAlreadyExists';
+
+// Timeout de 15s — aucun n'était configuré (défaut axios = infini). Utilisé
+// pour l'envoi des webhooks clients (callWebHook) et l'appel interne que le
+// serveur se fait à lui-même au démarrage (startAllSessions) : un client
+// webhook lent/injoignable ne doit pas laisser de requêtes pendantes
+// indéfiniment à chaque événement WhatsApp (message, ack, présence...).
+const api = axios.create({ timeout: 15_000 });
 
 let mime: any, crypto: any; //, aws: any;
 if (config.webhook.uploadS3) {
