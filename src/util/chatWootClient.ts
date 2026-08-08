@@ -47,6 +47,7 @@ export default class chatWootClient {
     this.inbox_id = this.config.inbox_id;
     this.api = axios.create({
       baseURL: this.config.baseURL,
+      timeout: 15_000,
       headers: {
         'Content-Type': 'application/json;charset=utf-8',
         api_access_token: this.config.token,

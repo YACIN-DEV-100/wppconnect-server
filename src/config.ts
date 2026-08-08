@@ -48,11 +48,13 @@ export default {
       '--disable-web-security',
       '--no-sandbox',
       '--disable-web-security',
-      '--aggressive-cache-discard',
-      '--disable-cache',
-      '--disable-application-cache',
-      '--disable-offline-load-stale-cache',
-      '--disk-cache-size=0',
+      // Le cache disque/mémoire de Chromium était désactivé ici
+      // (--aggressive-cache-discard, --disable-cache,
+      // --disable-application-cache, --disable-offline-load-stale-cache,
+      // --disk-cache-size=0). Une session WhatsApp Web recharge en
+      // permanence les mêmes assets JS/CSS/images WhatsApp : les désactiver
+      // forçait un re-fetch réseau à chaque navigation/reload au lieu de
+      // servir depuis le cache local, pour aucun bénéfice fonctionnel.
       '--disable-background-networking',
       '--disable-default-apps',
       '--disable-extensions',
