@@ -257,7 +257,7 @@ export default class chatWootClient {
       );
       return data;
     } catch (e) {
-      console.log(e);
+      console.error('Error finding contact:', e);
       return null;
     }
   }
@@ -284,7 +284,7 @@ export default class chatWootClient {
       );
       return data.data.payload.contact;
     } catch (e) {
-      console.log(e);
+      console.error('Error creating contact:', e);
       return null;
     }
   }
@@ -298,7 +298,7 @@ export default class chatWootClient {
         (e: any) => e.inbox_id == this.inbox_id && e.status != 'resolved'
       );
     } catch (e) {
-      console.log(e);
+      console.error('Error finding conversation:', e);
       return null;
     }
   }
@@ -321,7 +321,7 @@ export default class chatWootClient {
       );
       return data;
     } catch (e) {
-      console.log(e);
+      console.error('Error creating conversation:', e);
       return null;
     }
   }
