@@ -42,10 +42,9 @@ export default async function statusConnection(
         if (req.body.isGroup || req.body.isNewsletter) {
           localArr[index] = contact;
         } else if (numbers.indexOf(contact) < 0) {
-          console.log(contact);
           const profile: any = await req.client
             .checkNumberStatus(contact)
-            .catch((error) => console.log(error));
+            .catch((error) => req.logger.error(error));
           if (!profile?.numberExists) {
             const num = (contact as any).split('@')[0];
             res.status(400).json({
