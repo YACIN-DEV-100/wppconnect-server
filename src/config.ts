@@ -28,10 +28,15 @@ export default {
     // groupe) — cet event (ajout/retrait de participant) ne concerne de
     // toute façon aucun flux actuel.
     onParticipantsChanged: false,
-    onReactionMessage: true,
-    onPollResponse: true,
-    onRevokedMessage: true,
-    onLabelUpdated: true,
+    // Les 4 events suivants sont eux aussi relayés sans être consommés par
+    // whatsapp.controller.ts (onmessage/unreadmessages/session-started
+    // uniquement) — désactivés pour éviter un appel webhook signé HMAC pour
+    // rien à chaque réaction emoji, suppression de message, vote de sondage
+    // (le bot n'en envoie pas) ou changement de label WhatsApp Business.
+    onReactionMessage: false,
+    onPollResponse: false,
+    onRevokedMessage: false,
+    onLabelUpdated: false,
     onSelfMessage: false,
     ignore: ['status@broadcast'],
   },
