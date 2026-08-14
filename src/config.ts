@@ -23,7 +23,11 @@ export default {
     // quand même un appel webhook signé (HMAC) pour rien côté serveur, et un
     // aller-retour HTTP + vérification de signature pour rien côté bot.
     onPresenceChanged: false,
-    onParticipantsChanged: true,
+    // Désactivé pour la même raison : non géré par whatsapp.controller.ts,
+    // et dayaxcash-bot fonctionne en conversations 1:1 (pas de logique
+    // groupe) — cet event (ajout/retrait de participant) ne concerne de
+    // toute façon aucun flux actuel.
+    onParticipantsChanged: false,
     onReactionMessage: true,
     onPollResponse: true,
     onRevokedMessage: true,
