@@ -17,7 +17,12 @@ export default {
     readMessage: true,
     allUnreadOnStart: false,
     listenAcks: true,
-    onPresenceChanged: true,
+    // Désactivé : dayaxcash-bot ne traite pas cet event (whatsapp.controller.ts
+    // ne gère que onmessage/unreadmessages/session-started) — chaque
+    // changement de présence (en ligne, "en train d'écrire...") déclenchait
+    // quand même un appel webhook signé (HMAC) pour rien côté serveur, et un
+    // aller-retour HTTP + vérification de signature pour rien côté bot.
+    onPresenceChanged: false,
     onParticipantsChanged: true,
     onReactionMessage: true,
     onPollResponse: true,
