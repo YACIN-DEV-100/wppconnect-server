@@ -16,7 +16,13 @@ export default {
     uploadS3: false,
     readMessage: true,
     allUnreadOnStart: false,
-    listenAcks: true,
+    // Désactivé pour la même raison que les autres events de ce bloc :
+    // whatsapp.controller.ts ne traite que onmessage. Chaque message
+    // envoyé par le bot (confirmations, prompts, statuts) génère 2-3
+    // events onack (envoyé/livré/lu) — probablement la source la plus
+    // fréquente d'appels webhook inutiles, vu le volume de messages
+    // sortants du bot.
+    listenAcks: false,
     // Désactivé : dayaxcash-bot ne traite pas cet event (whatsapp.controller.ts
     // ne gère que onmessage/unreadmessages/session-started) — chaque
     // changement de présence (en ligne, "en train d'écrire...") déclenchait
