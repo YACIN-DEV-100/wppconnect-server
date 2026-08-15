@@ -284,6 +284,12 @@ export default class CreateSessionUtil {
     await client.onMessage(async (message: any) => {
       eventEmitter.emit(`mensagem-${client.session}`, client, message);
       callWebHook(client, req, 'onmessage', message);
+      // Volontairement laissé actif malgré n'être pas encore consommé par
+      // dayaxcash-bot (retraits/dépôts uniquement) — utile si un flux
+      // exploitant la position live d'un joueur est ajouté un jour. Pas
+      // d'interrupteur de config pour cet event (contrairement au bloc
+      // webhook.onXxx plus bas) : le désactiver demanderait de retirer ce
+      // bloc directement.
       if (message.type === 'location')
         client.onLiveLocation(message.sender.id, (location) => {
           callWebHook(client, req, 'location', location);
@@ -309,6 +315,10 @@ export default class CreateSessionUtil {
         callWebHook(client, req, 'onselfmessage', message);
     });
 
+    // Même remarque que pour 'location' ci-dessus : laissé actif bien que
+    // non consommé par dayaxcash-bot aujourd'hui, utile si le bot doit un
+    // jour logger/rejeter automatiquement les appels entrants. Pas
+    // d'interrupteur de config non plus pour cet event.
     await client.onIncomingCall(async (call) => {
       req.io.emit('incomingcall', call);
       callWebHook(client, req, 'incomingcall', call);
