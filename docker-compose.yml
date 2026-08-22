@@ -1,16 +1,31 @@
-version: "3"
-
+# wpp-server rejoint le réseau Docker externe partagé avec dayaxcash-monorepo
+# (apps/bot, apps/api-gateway) — à créer une seule fois avant le premier
+# `docker compose up` sur cette VM : `docker network create dayaxcash_net`.
+# Pas de port publié vers l'hôte/Internet : seuls bot et api-gateway (même
+# réseau Docker) ont besoin de joindre ce service, jamais l'extérieur.
 services:
   wppconnect:
     container_name: wpp-server
     restart: unless-stopped
     build:
       context: .
+    env_file:
+      - ./.env
     volumes:
-      - ./config.ts:/usr/src/wpp-server/config.ts
-      - ./wppconnect_tokens:/usr/src/wpp-server/tokens
-    ports:
-      - "21465:21465"
+      - wppconnect_tokens:/usr/src/wpp-server/tokens
+      # Sessions Chromium/Puppeteer (customUserDataDir, src/config.ts) —
+      # sans ce volume, une session WhatsApp active doit être re-scannée
+      # (QR code) à chaque redémarrage/redéploiement du conteneur, perdant
+      # l'état de connexion. Gap documenté dans CLAUDE.md (dayaxcash-
+      # monorepo, section "Mise en prod") avant ce fix.
+      - wppconnect_userdata:/usr/src/wpp-server/userDataDir
+    networks:
+      - dayaxcash_net
+
+networks:
+  dayaxcash_net:
+    external: true
 
 volumes:
-  wppconnect_tokens: {}      
+  wppconnect_tokens: {}
+  wppconnect_userdata: {}
