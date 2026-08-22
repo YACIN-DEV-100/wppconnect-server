@@ -1,0 +1,42 @@
+name: CD (déploiement VPS)
+
+# Se déclenche uniquement après un run réussi du workflow "build" (build+lint,
+# .github/workflows/build.yml) sur `dev` — évite de déployer du code qui vient
+# d'échouer sa vérification CI. `dev` est la branche d'intégration active de
+# ce fork (voir dayaxcash-monorepo/CLAUDE.md), pas encore de branche release
+# `main` distincte.
+on:
+  workflow_run:
+    workflows: ['build']
+    types: [completed]
+    branches: [dev]
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      # Secrets à créer une fois dans Settings > Secrets and variables >
+      # Actions DE CE REPO (indépendant de dayaxcash-monorepo — les secrets
+      # GitHub Actions sont scoppés par repo) — voir le guide PDF remis à
+      # l'utilisateur pour le détail complet (génération de la clé SSH
+      # dédiée au déploiement, utilisateur non-root sur la VPS) :
+      #   VPS_HOST : IP publique de la VPS (ex: DAYAX sur Oracle Cloud)
+      #   VPS_USER : utilisateur SSH dédié au déploiement (PAS root)
+      #   VPS_SSH_KEY : clé privée de CE compte de déploiement (jamais la
+      #     clé personnelle utilisée pour créer la VM)
+      - name: Déployer sur la VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            docker network create dayaxcash_net 2>/dev/null || true
+            cd ~/wppconnect-server
+            git fetch origin dev
+            git reset --hard origin/dev
+            docker compose build
+            docker compose up -d
+            docker image prune -f
