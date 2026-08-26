@@ -16,6 +16,7 @@
 import { create, SocketState, StatusFind } from '@wppconnect-team/wppconnect';
 import { Request } from 'express';
 
+import { config as configEnv } from '../config/env';
 import { download } from '../controller/sessionController';
 import { WhatsAppServer } from '../types/WhatsAppServer';
 import chatWootClient from './chatWootClient';
@@ -43,7 +44,14 @@ export default class CreateSessionUtil {
       let client = this.getClient(session) as any;
       if (client.status != null && client.status !== 'CLOSED') return;
       client.status = 'INITIALIZING';
-      client.config = req.body;
+      // `webhook` n'est JAMAIS pris depuis req.body : cet endpoint est
+      // atteint aussi bien depuis apps/web-manager (navigateur, hors réseau
+      // Docker) que depuis un redémarrage auto de session (startAllSessions,
+      // req.body vide) — dans les deux cas, seule cette instance
+      // wppconnect-server sait quelle adresse est réellement joignable
+      // depuis SON PROPRE conteneur pour rappeler apps/bot. Voir
+      // config/env.ts (botWebhookUrl) pour le détail du bug que ça évite.
+      client.config = { ...req.body, webhook: configEnv.botWebhookUrl };
 
       const tokenStore = new Factory();
       const myTokenStore = tokenStore.createTokenStory(client);
