@@ -15,7 +15,9 @@
  */
 import { create, SocketState, StatusFind } from '@wppconnect-team/wppconnect';
 import { Request } from 'express';
+import fs from 'fs';
 
+import { logger } from '..';
 import { config as configEnv } from '../config/env';
 import { download } from '../controller/sessionController';
 import { WhatsAppServer } from '../types/WhatsAppServer';
@@ -23,6 +25,30 @@ import chatWootClient from './chatWootClient';
 import { autoDownload, callWebHook, startHelper } from './functions';
 import { clientsArray, eventEmitter } from './sessionUtil';
 import Factory from './tokenStore/factory';
+
+// Chromium écrit SingletonLock/SingletonCookie/SingletonSocket dans le
+// profil (userDataDir) pour empêcher deux processus de l'ouvrir en même
+// temps. Dans ce conteneur, un redémarrage brutal (docker compose up -d
+// après changement de config, OOM kill...) tue Chromium avant qu'il n'ait
+// pu les supprimer lui-même — au prochain démarrage, Chromium refuse de
+// lancer en pensant qu'"un autre processus" (en fait lui-même, avant le
+// kill) utilise encore le profil ("Error no open browser", Code: 21,
+// process_singleton_posix.cc). Sans danger de les supprimer ici : un seul
+// conteneur wpp-server tourne à la fois sur ce profil, donc si ce code
+// s'exécute, aucun AUTRE processus ne peut légitimement le tenir.
+function clearStaleChromiumLock(profileDir: string) {
+  for (const file of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
+    try {
+      fs.unlinkSync(`${profileDir}/${file}`);
+    } catch (err: any) {
+      if (err.code !== 'ENOENT') {
+        logger.warn(
+          `Impossible de supprimer le verrou Chromium ${file} (${profileDir}): ${err.message}`
+        );
+      }
+    }
+  }
+}
 
 export default class CreateSessionUtil {
   startChatWootClient(client: any) {
@@ -63,8 +89,10 @@ export default class CreateSessionUtil {
       this.startChatWootClient(client);
 
       if (req.serverOptions.customUserDataDir) {
+        const userDataDir = req.serverOptions.customUserDataDir + session;
+        clearStaleChromiumLock(userDataDir);
         req.serverOptions.createOptions.puppeteerOptions = {
-          userDataDir: req.serverOptions.customUserDataDir + session,
+          userDataDir,
         };
       }
 
