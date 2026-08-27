@@ -7,6 +7,15 @@ services:
   wppconnect:
     container_name: wpp-server
     restart: unless-stopped
+    # Rotation des logs (driver json-file par défaut) : sans ça, le fichier
+    # -json.log grossit indéfiniment — même config que dayaxcash-monorepo/
+    # docker-compose.yml (bot/api-gateway/mongo), 10 Mo x 10 fichiers = 100 Mo
+    # max, chaque fichier restant lisible d'un coup.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '10'
     build:
       context: .
     env_file:
