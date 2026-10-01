@@ -1,26 +1,59 @@
 name: CD (déploiement VPS)
 
-# Se déclenche uniquement après un run réussi du workflow "build" (build+lint,
-# .github/workflows/build.yml) sur `dev` — évite de déployer du code qui vient
-# d'échouer sa vérification CI. `dev` est la branche d'intégration active de
-# ce fork (voir dayaxcash-monorepo/CLAUDE.md), pas encore de branche release
-# `main` distincte.
+# Déploie la branche stable `preview` sur la VPS (production). `main` suit le
+# dépôt WPPConnect d'origine et n'est jamais déployée.
+#
+# Déclenché par un push sur `preview` (ou à la main depuis l'onglet Actions),
+# PAS par `workflow_run` : un workflow `workflow_run` n'est lu que depuis la
+# branche par défaut du repo (`main`, celle de l'upstream), qui ne contient
+# pas ce fichier — il ne se serait donc jamais déclenché. Le build + lint
+# sont refaits ici avant le déploiement (job `verify`) pour ne jamais
+# déployer du code qui ne compile pas, sans modifier build.yml (fichier de
+# l'upstream, on évite les conflits à la synchronisation).
 on:
-  workflow_run:
-    workflows: ['build']
-    types: [completed]
-    branches: [dev]
+  push:
+    branches: [preview]
+  workflow_dispatch:
+
+# Un seul déploiement à la fois ; un nouveau push attend la fin du précédent.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4.4.0
+        with:
+          node-version: 22.22.2
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Yarn
+        run: corepack prepare yarn@4.14.1 --activate
+
+      - name: Install Dependencies
+        run: yarn install --immutable
+
+      - name: Build source
+        run: yarn build
+
+      - name: Lint source
+        run: yarn lint
+
   deploy:
-    if: github.event.workflow_run.conclusion == 'success'
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       # Secrets à créer une fois dans Settings > Secrets and variables >
       # Actions DE CE REPO (indépendant de dayaxcash-monorepo — les secrets
-      # GitHub Actions sont scoppés par repo) — voir le guide PDF remis à
-      # l'utilisateur pour le détail complet (génération de la clé SSH
-      # dédiée au déploiement, utilisateur non-root sur la VPS) :
+      # GitHub Actions sont scoppés par repo) :
       #   VPS_HOST : IP publique de la VPS (ex: DAYAX sur Oracle Cloud)
       #   VPS_USER : utilisateur SSH dédié au déploiement (PAS root)
       #   VPS_SSH_KEY : clé privée de CE compte de déploiement (jamais la
@@ -35,8 +68,8 @@ jobs:
             set -e
             docker network create dayaxcash_net 2>/dev/null || true
             cd ~/wppconnect-server
-            git fetch origin dev
-            git reset --hard origin/dev
+            git fetch origin preview
+            git checkout -f -B preview origin/preview
             docker compose build
             docker compose up -d
             docker image prune -f
