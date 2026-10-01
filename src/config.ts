@@ -6,7 +6,13 @@ export default {
   port: '21465',
   deviceName: 'WppConnect',
   poweredBy: 'WPPConnect-Server',
-  startAllSession: false,
+  // Redémarre automatiquement au boot du serveur toutes les sessions dont le
+  // token est stocké (volume wppconnect_tokens) — sans ça, après chaque
+  // redéploiement/redémarrage du conteneur, la session WhatsApp restait
+  // arrêtée jusqu'à un "Démarrer la session" manuel depuis le dashboard
+  // (sans rescan QR : le profil Chromium est conservé dans
+  // wppconnect_userdata). Désactivable via START_ALL_SESSION=false.
+  startAllSession: process.env.START_ALL_SESSION !== 'false',
   tokenStoreType: 'file',
   maxListeners: 15,
   customUserDataDir: './userDataDir/',
