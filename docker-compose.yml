@@ -3,10 +3,24 @@
 # `docker compose up` sur cette VM : `docker network create dayaxcash_net`.
 # Pas de port publié vers l'hôte/Internet : seuls bot et api-gateway (même
 # réseau Docker) ont besoin de joindre ce service, jamais l'extérieur.
+# Nom du projet Compose fixé explicitement (identique à celui déduit jusqu'ici
+# du nom du dossier ~/wppconnect-server) : il préfixe les volumes de la
+# session WhatsApp (wppconnect-server_wppconnect_tokens/_userdata). Le
+# changer — ou renommer le service, le container_name ou les volumes —
+# ferait créer des volumes VIDES par Docker : session perdue, QR code à
+# rescanner.
+name: wppconnect-server
+
 services:
   wppconnect:
     container_name: wpp-server
     restart: unless-stopped
+    # En production, l'image est construite par GitHub Actions (linux/arm64)
+    # et publiée sur GHCR : la VPS fait `docker compose pull` puis
+    # `up -d --no-build` (voir .github/workflows/deploy.yml). WPP_TAG = SHA
+    # du commit déployé, "latest" par défaut. `build:` reste pour le
+    # développement local (`docker compose up --build`).
+    image: ghcr.io/yacin-dev-100/wppconnect-server/wppconnect:${WPP_TAG:-latest}
     # Rotation des logs (driver json-file par défaut) : sans ça, le fichier
     # -json.log grossit indéfiniment — même config que dayaxcash-monorepo/
     # docker-compose.yml (bot/api-gateway/mongo), 10 Mo x 10 fichiers = 100 Mo

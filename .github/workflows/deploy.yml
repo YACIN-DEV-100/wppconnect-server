@@ -20,8 +20,25 @@ concurrency:
   group: deploy-vps
   cancel-in-progress: false
 
+# Enchaînement : verify (build + lint) → build-images (image linux/arm64
+# construite par GitHub Actions et publiée sur GHCR) → deploy (la VPS ne fait
+# plus que TÉLÉCHARGER l'image : plus aucune compilation sur ses 2 cœurs,
+# partagés avec dayaxcash-monorepo et Tailowl).
+#
+# Chaque job est limité à `preview` : un workflow_dispatch lancé par erreur
+# depuis une autre branche ne publie jamais d'image `latest` et ne déploie
+# rien (le script SSH refuserait de toute façon un commit absent de
+# l'historique de preview, mais seulement après la publication de l'image).
+env:
+  # GHCR refuse les majuscules : le propriétaire "YACIN-DEV-100" est écrit
+  # en minuscules en dur ici.
+  IMAGE: ghcr.io/yacin-dev-100/wppconnect-server/wppconnect
+  # Commit déployé (push sur preview ou workflow_dispatch sur preview).
+  DEPLOY_SHA: ${{ github.sha }}
+
 jobs:
   verify:
+    if: github.ref == 'refs/heads/preview'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -47,8 +64,54 @@ jobs:
       - name: Lint source
         run: yarn lint
 
-  deploy:
+  build-images:
     needs: verify
+    if: github.ref == 'refs/heads/preview'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      # Le repo est privé : les runners ARM natifs gratuits (ubuntu-24.04-arm)
+      # sont réservés aux repos publics, d'où l'émulation QEMU sur un runner
+      # x86. Plus lent qu'en natif, compensé par le cache (type=gha).
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Dockerfile d'origine WPPConnect, inchangé (node:alpine + paquet Alpine
+      # `chromium`, disponible en aarch64).
+      - name: Construire et publier wppconnect (linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ env.DEPLOY_SHA }}
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ env.DEPLOY_SHA }}
+          cache-from: type=gha,scope=wppconnect
+          cache-to: type=gha,mode=max,scope=wppconnect
+
+  deploy:
+    needs: build-images
+    if: github.ref == 'refs/heads/preview'
     runs-on: ubuntu-latest
     steps:
       # Secrets à créer une fois dans Settings > Secrets and variables >
@@ -58,6 +121,10 @@ jobs:
       #   VPS_USER : utilisateur SSH dédié au déploiement (PAS root)
       #   VPS_SSH_KEY : clé privée de CE compte de déploiement (jamais la
       #     clé personnelle utilisée pour créer la VM)
+      # La VPS doit déjà être connectée à ghcr.io (`docker login ghcr.io` fait
+      # une fois par l'utilisateur de déploiement, jeton read:packages,
+      # partagé avec dayaxcash-monorepo et Tailowl) — aucun jeton n'est
+      # stocké dans ce repo.
       - name: Déployer sur la VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -66,10 +133,34 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
+            DEPLOY_SHA=${{ env.DEPLOY_SHA }}
             docker network create dayaxcash_net 2>/dev/null || true
+            # Vrai dossier /home/deploy/wppconnect-server (plus de lien
+            # symbolique). Ne jamais le renommer : voir `name:` dans
+            # docker-compose.yml (volumes de la session WhatsApp).
             cd ~/wppconnect-server
             git fetch origin preview
-            git checkout -f -B preview origin/preview
-            docker compose build
-            docker compose up -d
+            # On se place sur le commit DÉPLOYÉ (pas origin/preview, qui a pu
+            # avancer depuis) : docker-compose.yml correspond ainsi toujours
+            # exactement à l'image construite. Le commit doit être présent
+            # après le fetch ET appartenir à l'historique de preview, sinon
+            # arrêt AVANT de toucher aux conteneurs.
+            if ! git cat-file -e "${DEPLOY_SHA}^{commit}" 2>/dev/null; then
+              echo "Commit ${DEPLOY_SHA} introuvable après git fetch origin preview" >&2
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$DEPLOY_SHA" origin/preview; then
+              echo "Commit ${DEPLOY_SHA} absent de l'historique de origin/preview" >&2
+              exit 1
+            fi
+            git checkout -f -B preview "$DEPLOY_SHA"
+            # Version exacte à déployer (image taguée par SHA, pas "latest") :
+            # permet de revenir à une version précise.
+            export WPP_TAG="$DEPLOY_SHA"
+            docker compose pull
+            docker compose up -d --no-build
+            # Garde les 3 dernières versions de l'image (jamais celle en cours
+            # d'utilisation), sans toucher aux images des autres applications
+            # de la VPS. Best-effort : n'échoue jamais le déploiement.
+            bash deploy/prune-wpp-images.sh 3 || true
             docker image prune -f
