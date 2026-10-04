@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Nettoyage des anciennes images GHCR de wppconnect-server sur la VPS.
 #
-# Appelé par .github/workflows/deploy.yml après `docker compose up -d`.
+# Appelé par deploy/vps-deploy.sh (déploiement CD) après `docker compose up -d`.
 # `docker image prune -f` ne supprime que les images sans étiquette : les
 # images étiquetées par SHA (une par déploiement) s'accumuleraient sinon
 # indéfiniment.
