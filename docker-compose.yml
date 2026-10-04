@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
     # En production, l'image est construite par GitHub Actions (linux/arm64)
     # et publiée sur GHCR : la VPS fait `docker compose pull` puis
-    # `up -d --no-build` (voir .github/workflows/deploy.yml). WPP_TAG = SHA
+    # `up -d --no-build` (voir deploy/vps-deploy.sh). WPP_TAG = SHA
     # du commit déployé, "latest" par défaut. `build:` reste pour le
     # développement local (`docker compose up --build`).
     image: ghcr.io/yacin-dev-100/wppconnect-server/wppconnect:${WPP_TAG:-latest}

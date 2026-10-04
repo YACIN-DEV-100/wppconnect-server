@@ -23,11 +23,12 @@ concurrency:
 # Enchaînement : verify (build + lint) → build-images (image linux/arm64
 # construite par GitHub Actions et publiée sur GHCR) → deploy (la VPS ne fait
 # plus que TÉLÉCHARGER l'image : plus aucune compilation sur ses 2 cœurs,
-# partagés avec dayaxcash-monorepo et Tailowl).
+# partagés avec dayaxcash-monorepo et Tailowl). Les étapes exécutées sur la
+# VPS sont dans deploy/vps-deploy.sh (clé SSH restreinte, voir le job deploy).
 #
 # Chaque job est limité à `preview` : un workflow_dispatch lancé par erreur
 # depuis une autre branche ne publie jamais d'image `latest` et ne déploie
-# rien (le script SSH refuserait de toute façon un commit absent de
+# rien (deploy/vps-deploy.sh refuserait de toute façon un commit absent de
 # l'historique de preview, mais seulement après la publication de l'image).
 env:
   # GHCR refuse les majuscules : le propriétaire "YACIN-DEV-100" est écrit
@@ -131,36 +132,14 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -e
-            DEPLOY_SHA=${{ env.DEPLOY_SHA }}
-            docker network create dayaxcash_net 2>/dev/null || true
-            # Vrai dossier /home/deploy/wppconnect-server (plus de lien
-            # symbolique). Ne jamais le renommer : voir `name:` dans
-            # docker-compose.yml (volumes de la session WhatsApp).
-            cd ~/wppconnect-server
-            git fetch origin preview
-            # On se place sur le commit DÉPLOYÉ (pas origin/preview, qui a pu
-            # avancer depuis) : docker-compose.yml correspond ainsi toujours
-            # exactement à l'image construite. Le commit doit être présent
-            # après le fetch ET appartenir à l'historique de preview, sinon
-            # arrêt AVANT de toucher aux conteneurs.
-            if ! git cat-file -e "${DEPLOY_SHA}^{commit}" 2>/dev/null; then
-              echo "Commit ${DEPLOY_SHA} introuvable après git fetch origin preview" >&2
-              exit 1
-            fi
-            if ! git merge-base --is-ancestor "$DEPLOY_SHA" origin/preview; then
-              echo "Commit ${DEPLOY_SHA} absent de l'historique de origin/preview" >&2
-              exit 1
-            fi
-            git checkout -f -B preview "$DEPLOY_SHA"
-            # Version exacte à déployer (image taguée par SHA, pas "latest") :
-            # permet de revenir à une version précise.
-            export WPP_TAG="$DEPLOY_SHA"
-            docker compose pull
-            docker compose up -d --no-build
-            # Garde les 3 dernières versions de l'image (jamais celle en cours
-            # d'utilisation), sans toucher aux images des autres applications
-            # de la VPS. Best-effort : n'échoue jamais le déploiement.
-            bash deploy/prune-wpp-images.sh 3 || true
-            docker image prune -f
+          # CLÉ RESTREINTE (`wpp-ci`) : côté VPS, sa clé publique porte
+          # `command="/home/deploy/bin/wpp-deploy.sh",no-port-forwarding,...`
+          # dans ~/.ssh/authorized_keys du compte deploy. Le VPS exécute donc
+          # TOUJOURS ce script, jamais ce `script:` : on n'y envoie que le
+          # commit à déployer, que le script lit dans SSH_ORIGINAL_COMMAND.
+          # Les étapes (réseau, code au commit déployé, pull de l'image taguée
+          # par SHA, up -d, nettoyage) sont dans deploy/vps-deploy.sh, installé
+          # sur le VPS dans ~/bin/wpp-deploy.sh. Pour changer une étape :
+          # modifier deploy/vps-deploy.sh puis réinstaller la copie (voir
+          # CLAUDE.md) — ajouter des commandes ici n'aurait aucun effet.
+          script: DEPLOY_SHA=${{ env.DEPLOY_SHA }}

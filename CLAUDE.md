@@ -27,9 +27,9 @@ est dans `CLAUDE.md` de `dayaxcash-monorepo`.
 `Dockerfile`, `.dockerignore`, `src/`... sauf correctif volontaire), pour
 garder les mises à jour depuis WPPConnect simples. Les fichiers propres à
 ce fork : `.github/workflows/deploy.yml`, `docker-compose.yml`,
-`deploy/prune-wpp-images.sh`, ce `CLAUDE.md`.
+`deploy/vps-deploy.sh`, `deploy/prune-wpp-images.sh`, ce `CLAUDE.md`.
 
-## Déploiement (`.github/workflows/deploy.yml`)
+## Déploiement (`.github/workflows/deploy.yml` + `deploy/vps-deploy.sh`)
 
 Déclenché par un push sur `preview` (ou `workflow_dispatch`), chaque job
 limité à `preview`. Enchaînement :
@@ -44,23 +44,65 @@ limité à `preview`. Enchaînement :
    `Dockerfile` d'origine est utilisé tel quel (node alpine + paquet
    `chromium` d'Alpine, disponible en aarch64 ; il tournait déjà en
    production sur cette même VPS ARM avant ce changement).
-3. `deploy` : SSH (`appleboy/ssh-action`) sur la VPS — `docker network
+3. `deploy` : SSH (`appleboy/ssh-action`) sur la VPS, qui n'envoie que
+   `DEPLOY_SHA=<sha>` ; les étapes sont exécutées par `deploy/vps-deploy.sh`
+   (clé restreinte, voir ci-dessous) — `docker network
 create dayaxcash_net || true`, `cd ~/wppconnect-server`, `git fetch
 origin preview`, vérification que le commit déployé existe et appartient
    à l'historique de `origin/preview` (sinon arrêt **avant** de toucher aux
    conteneurs), `git checkout -f -B preview <sha>`, `export WPP_TAG=<sha>`,
    `docker compose pull`, `docker compose up -d --no-build`, nettoyage des
-   anciennes images (ci-dessous), `docker image prune -f`. La VPS ne compile
+   anciennes images (ci-dessous), `docker image prune -f`, `docker compose
+   ps`, puis `✅ wppconnect-server déployé : <sha court>` en dernière ligne
+   du journal du job. Un seul déploiement à la fois côté VPS aussi (`flock`
+   sur `~/.wpp-deploy.lock`, attente max 10 min). La VPS ne compile
    plus rien (elle saturait ses 2 cœurs, partagés avec dayaxcash-monorepo
    et Tailowl).
 
 Secrets du repo (Settings > Secrets and variables > Actions) : `VPS_HOST`,
-`VPS_USER` (`deploy`, jamais root), `VPS_SSH_KEY`.
+`VPS_USER` (`deploy`, jamais root), `VPS_SSH_KEY` (clé privée `wpp-ci`,
+propre à ce dépôt).
 
-**Revenir à une version précédente** (sur la VPS, dans
-`~/wppconnect-server`) : `git checkout -f -B preview <sha>` puis
-`WPP_TAG=<sha> docker compose pull && WPP_TAG=<sha> docker compose up -d
---no-build`. Sans `WPP_TAG`, Compose prend `latest`.
+**Clé SSH de la CD restreinte — les étapes vivent dans
+`deploy/vps-deploy.sh` (depuis le 04/10/2026).** L'ancienne clé partagée
+`github_actions` a été retirée des `authorized_keys` du VPS le 04/10/2026 ;
+ce dépôt a sa propre clé `wpp-ci`, dont la ligne dans
+`~/.ssh/authorized_keys` du compte `deploy` est préfixée par
+`command="/home/deploy/bin/wpp-deploy.sh",no-port-forwarding,
+no-X11-forwarding,no-agent-forwarding,no-pty`. Conséquences :
+- Quoi que le workflow envoie, le VPS exécute **toujours**
+  `~/bin/wpp-deploy.sh` : le `script:` de `deploy.yml` ne sert qu'à
+  transmettre `DEPLOY_SHA=<sha>`, lu dans `SSH_ORIGINAL_COMMAND`. Une fuite
+  de `VPS_SSH_KEY` ne donne ni shell ni tunnel, seulement le droit de
+  redéployer un commit déjà présent dans `origin/preview`.
+- Le script refuse tout ce qui n'est pas un SHA de 40 caractères hexa (code
+  2, rien n'est lancé), puis un commit absent de l'historique de
+  `origin/preview` (code 1, avant de toucher aux conteneurs).
+- **Source versionnée : `deploy/vps-deploy.sh` ; copie exécutée :
+  `~/bin/wpp-deploy.sh`**, hors du clone (un `git checkout` du déploiement
+  ne modifie jamais le script en cours d'exécution). Première installation
+  (avant que la clé restreinte ne soit active, quand le clone n'est pas
+  encore sur la version qui contient le script) : `git -C
+  ~/wppconnect-server fetch -q origin preview && mkdir -p ~/bin && git -C
+  ~/wppconnect-server show origin/preview:deploy/vps-deploy.sh >
+  ~/bin/wpp-deploy.sh && chmod 755 ~/bin/wpp-deploy.sh`.
+- **Changer une étape du déploiement** = modifier `deploy/vps-deploy.sh`
+  (jamais le `script:` du workflow, sans effet), mettre en production
+  (`dev` → `preview`), puis réinstaller la copie sur le VPS, en tant que
+  `deploy` : `install -m 755 ~/wppconnect-server/deploy/vps-deploy.sh
+  ~/bin/wpp-deploy.sh` (le déploiement a déjà mis le clone sur le nouveau
+  commit ; la copie n'est jamais mise à jour automatiquement).
+- Ne jamais retirer le `command="..."` d'`authorized_keys` sans remettre
+  les étapes dans le workflow : le `script:` seul ne déploie rien.
+
+**Revenir à une version précédente** (sur la VPS, en tant que `deploy`) :
+`~/bin/wpp-deploy.sh <sha>` (SHA complet de 40 caractères d'un commit de
+`preview` déjà publié sur GHCR) — mêmes étapes et vérifications que la CD,
+code ET image remis à ce commit, verrou partagé avec la CD. Le prochain
+déploiement automatique (merge sur `preview`) remet la dernière version.
+Équivalent manuel, dans `~/wppconnect-server` : `git checkout -f -B preview
+<sha>`, puis `WPP_TAG=<sha> docker compose pull`, puis `WPP_TAG=<sha>
+docker compose up -d --no-build`. Sans `WPP_TAG`, Compose prend `latest`.
 
 **Nettoyage (`deploy/prune-wpp-images.sh 3`)** : `docker image prune -f` ne
 supprime que les images sans étiquette, les images étiquetées par SHA
