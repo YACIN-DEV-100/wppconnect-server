@@ -149,3 +149,18 @@ docker login ghcr.io -u <compte-github> --password-stdin`.
   modifier ou les commiter.
 - `startAllSession` (`src/config.ts`) doit rester actif : c'est ce qui
   reconnecte la session seule après chaque recréation du conteneur.
+
+## Envoi d'images cassé : `wa-js` 4.5.0 → 4.8.0 (14/11/2026)
+
+Constat en production : tout envoi de média (`/send-image`, `/send-file`)
+répondait 500, `Cannot read properties of undefined (reading 'prepRawMedia')`
+(dans `@wppconnect/wa-js`, qui ne suivait plus une mise à jour de WhatsApp
+Web) ; les messages texte passaient. Correctif minimal : seule la ligne
+`@wppconnect/wa-js` de `yarn.lock` passe de 4.5.0 à 4.8.0 (compatible avec la
+plage `^4.4.3` de `@wppconnect-team/wppconnect` 2.2.6, qui reste inchangé —
+monter wppconnect à 2.4.0 déplaçait plus de 1000 lignes du lockfile, dont
+puppeteer). Mise à jour : `yarn up -R @wppconnect/wa-js`.
+**Pas vérifié** : envoi réel d'une image (pas de WhatsApp en sandbox) — à
+tester après déploiement ; sinon retour en arrière avec
+`~/bin/wpp-deploy.sh 2759d32bd39c44cce53a8c952973a2633781a066` (dernière
+version avant ce changement).
